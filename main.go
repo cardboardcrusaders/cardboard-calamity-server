@@ -16,8 +16,6 @@ type player struct {
 	*sync.Mutex
 	id     int          // Unique identifier
 	active bool         // If the player is playing or not
-	width  int          // Width of the video data
-	height int          // Height of the video data
 	conn   *net.TCPConn // Socket connection for video streaming
 }
 
@@ -71,6 +69,7 @@ func listen(p *player, partner *player) {
 	if err != nil {
 		panic(err)
 	}
+	log.Println("started listening for a connection")
 	ln, err := net.ListenTCP("tcp", addr)
 	if err != nil {
 		panic(err)
@@ -127,6 +126,8 @@ func main() {
 
 	http.HandleFunc("/user", func(w http.ResponseWriter, r *http.Request) {
 		post := func(w http.ResponseWriter, r *http.Request) {
+			log.Println("recieved a player join request")
+
 			// Find a non-existant player to assign the joiner to
 			var p *player
 			var id int
@@ -158,21 +159,17 @@ func main() {
 			err = json.Unmarshal(body, &data)
 			if err != nil {
 				w.Write(jsonError(err))
+				return
 			}
 
-			// Get the size of the video
-			var ok bool
-			if p.width, ok = data["width"].(int); !ok {
-				w.Write(jsonError(errors.New("width expected in request body")))
-			}
-			if p.height, ok = data["height"].(int); !ok {
-				w.Write(jsonError(errors.New("height expected in request body")))
-			}
+			log.Println("accepted join request for player", id)
 
 			// Give the player a partner if possible
 			assigned := assignPartner(&pairs, p)
 			if assigned {
 				log.Println("player", id, "was assigned with player", getPartner(&pairs, p))
+			} else {
+				log.Println("player", id, "was assigned to their own group")
 			}
 
 			// Wait for a video stream
