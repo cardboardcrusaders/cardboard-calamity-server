@@ -13,7 +13,7 @@ import (
 
 // player is a single player, including its connection for the video stream.
 type player struct {
-	*sync.Mutex
+	sync.Mutex
 	id     int          // Unique identifier
 	active bool         // If the player is playing or not
 	conn   *net.TCPConn // Socket connection for video streaming
@@ -44,10 +44,14 @@ func getPartner(pp *[]playerPair, index *player) *player {
 func assignPartner(pp *[]playerPair, p *player) bool {
 	// Search for players without a partner
 	for _, val := range *pp {
-		val.p1.Lock()
-		val.p2.Lock()
-		defer val.p1.Unlock()
-		defer val.p2.Unlock()
+		if val.p1 != nil {
+			val.p1.Lock()
+			defer val.p1.Unlock()
+		}
+		if val.p2 != nil {
+			val.p2.Lock()
+			defer val.p2.Unlock()
+		}
 		if (val.p1 != nil && val.p1.active) && (val.p1 == nil || !val.p2.active) {
 			val.p2 = p
 			return true
@@ -64,36 +68,29 @@ func assignPartner(pp *[]playerPair, p *player) bool {
 
 // listen starts listening for a video connection on a socket for the given
 // player. This video will be streamed to the partner.
-func listen(p *player, partner *player) {
-	addr, err := net.ResolveTCPAddr("tcp", ":8000")
-	if err != nil {
-		panic(err)
-	}
-	log.Println("started listening for a connection")
-	ln, err := net.ListenTCP("tcp", addr)
-	if err != nil {
-		panic(err)
-	}
-	ln.SetDeadline(time.Now().Add(time.Second * 5))
+func listen(ln *net.TCPListener, p *player, partner *player) {
+	var err error
 
+	// Wait for a TCP connection
 	for {
 		p.Lock()
 		p.conn, err = ln.AcceptTCP()
 		if err != nil {
-			log.Println("Socket err:", err)
 			p.Unlock()
 			continue
 		}
-
-		log.Println("connected to player", p.id)
-		p.conn.SetKeepAlive(true)
-		p.conn.SetKeepAlivePeriod(time.Second / 2)
-		p.Unlock()
-		streamVideo(p, partner)
-		p.Lock()
-		log.Println("lost connection to player", p.id)
-		p.Unlock()
+		break
 	}
+
+	log.Println("connected to player", p.id)
+	p.conn.SetKeepAlive(true)
+	p.conn.SetKeepAlivePeriod(time.Second / 2)
+	p.Unlock()
+	streamVideo(p, partner)
+	p.Lock()
+	log.Println("lost connection to player", p.id)
+	p.active = false
+	p.Unlock()
 }
 
 // streamVideo starts streaming video data between players.
@@ -103,7 +100,7 @@ func streamVideo(src *player, dest *player) {
 // jsonError creates a JSON structure with the given error message.
 func jsonError(err error) []byte {
 	resp := struct {
-		Error string `json: "error"`
+		Error string `json:"error"`
 	}{
 		Error: err.Error(),
 	}
@@ -123,6 +120,18 @@ func main() {
 	}
 
 	pairs := make([]playerPair, 0, 1)
+
+	// Set up listening for video connections on port 8000
+	addr, err := net.ResolveTCPAddr("tcp", ":8000")
+	if err != nil {
+		panic(err)
+	}
+	log.Println("started listening for port connections")
+	ln, err := net.ListenTCP("tcp", addr)
+	if err != nil {
+		panic(err)
+	}
+	ln.SetDeadline(time.Now().Add(time.Second * 5))
 
 	http.HandleFunc("/user", func(w http.ResponseWriter, r *http.Request) {
 		post := func(w http.ResponseWriter, r *http.Request) {
@@ -173,11 +182,11 @@ func main() {
 			}
 
 			// Wait for a video stream
-			go listen(p, getPartner(&pairs, p))
+			go listen(ln, p, getPartner(&pairs, p))
 
 			// Construct the response
 			resp := struct {
-				ID int `json: "id"`
+				ID int `json:"id"`
 			}{
 				ID: id,
 			}
@@ -237,7 +246,7 @@ func main() {
 
 			// Construct the response
 			resp := struct {
-				ID int `json: "id"`
+				ID int `json:"id"`
 			}{
 				ID: id,
 			}
