@@ -74,12 +74,12 @@ func listen(ln *net.TCPListener, p *player, partner *player) {
 	// Wait for a TCP connection
 	for {
 		p.Lock()
+		ln.SetDeadline(time.Now().Add(time.Second * 5))
 		p.conn, err = ln.AcceptTCP()
-		if err != nil {
-			p.Unlock()
-			continue
+		if err == nil {
+			break
 		}
-		break
+		p.Unlock()
 	}
 
 	log.Println("connected to player", p.id)
@@ -145,7 +145,6 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	ln.SetDeadline(time.Now().Add(time.Second * 5))
 
 	http.HandleFunc("/user", func(w http.ResponseWriter, r *http.Request) {
 		post := func(w http.ResponseWriter, r *http.Request) {
