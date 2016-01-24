@@ -95,20 +95,16 @@ func listen(ln *net.TCPListener, p *player, partner *player) {
 
 // streamVideo starts streaming video data between players.
 func streamVideo(src *player, dest *player) {
-	var err error
-	total := 0
-	n := 257
-	for n >= 256 {
+	for {
 		data := make([]byte, 256)
-		n, err = src.conn.Read(data)
+		_, err := src.conn.Read(data)
 		if err != nil {
 			log.Println(err)
 			break
 		}
-		total += n
-	}
 
-	log.Println("Got: ", total)
+		log.Println(data)
+	}
 }
 
 // jsonError creates a JSON structure with the given error message.
