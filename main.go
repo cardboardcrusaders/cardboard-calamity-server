@@ -66,9 +66,20 @@ func assignPartner(pp *[]playerPair, p *player) bool {
 	return false
 }
 
+// removePlayer removes a player from any player pairs.
+func removePlayer(pp *[]playerPair, p *player) {
+	for _, val := range *pp {
+		if val.p1 == p {
+			val.p1 = nil
+		} else if val.p2 == p {
+			val.p2 = nil
+		}
+	}
+}
+
 // listen starts listening for a video connection on a socket for the given
 // player. This video will be streamed to the partner.
-func listen(ln *net.TCPListener, p *player, partner *player) {
+func listen(ln *net.TCPListener, p *player, partner *player, pairs *[]playerPair) {
 	var err error
 
 	// Wait for a TCP connection
@@ -87,6 +98,7 @@ func listen(ln *net.TCPListener, p *player, partner *player) {
 	p.conn.SetKeepAlivePeriod(time.Second / 2)
 	p.Unlock()
 	streamVideo(p, partner)
+	removePlayer(pairs, p)
 	p.Lock()
 	log.Println("lost connection to player", p.id)
 	p.active = false
@@ -191,7 +203,7 @@ func main() {
 			}
 
 			// Wait for a video stream
-			go listen(ln, p, getPartner(&pairs, p))
+			go listen(ln, p, getPartner(&pairs, p), &pairs)
 
 			// Construct the response
 			resp := struct {
